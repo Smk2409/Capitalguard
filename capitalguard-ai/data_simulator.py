@@ -1,14 +1,4 @@
-"""
-data_simulator.py
-------------------
-Generates synthetic multi-asset market data so the optimization and risk
-engines can be demoed / tested without a paid market-data feed.
 
-In production this module would be swapped for a real ingestion layer
-(e.g. a Kafka consumer or REST poller hitting a market-data vendor),
-but it exposes the same shape of output (a returns DataFrame + metadata)
-so nothing downstream needs to change.
-"""
 from __future__ import annotations
 
 import numpy as np
