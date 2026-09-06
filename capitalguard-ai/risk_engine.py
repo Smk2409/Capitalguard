@@ -1,28 +1,4 @@
-"""
-risk_engine.py
---------------
-Real-time risk control & safeguard layer.
 
-Independent from the optimizer on purpose: the optimizer proposes an
-allocation, but this module is the one that decides whether the book (as it
-actually stands, or as proposed) is allowed to be in that state. That
-separation means a bug or extreme output in the optimizer can never itself
-breach a risk limit — the control layer is the final gate.
-
-Checks performed
-=================
-1. Value-at-Risk (VaR) / Conditional VaR (CVaR / Expected Shortfall) at a
-   configurable confidence level, via historical simulation.
-2. Maximum drawdown over the lookback window.
-3. Concentration limits (single-asset and sector).
-4. Liquidity buffer (minimum cash / T-bill allocation).
-
-Action ladder
-=============
-Each breach maps to a severity tier. `decide_action` reduces the set of
-breaches to a single recommended action so downstream systems (or a human)
-get one clear instruction, not a wall of alerts.
-"""
 from __future__ import annotations
 
 import numpy as np
