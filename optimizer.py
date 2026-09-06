@@ -1,27 +1,4 @@
-"""
-optimizer.py
-------------
-Core capital-allocation logic.
 
-Approach
-========
-1. Start from market-implied equilibrium returns (reverse-optimized from
-   current weights, the standard Black-Litterman starting point).
-2. Blend in the desk's discretionary "views" (e.g. "overweight EM equities")
-   with a confidence parameter -> posterior expected returns.
-3. Solve a mean-variance QP that maximizes posterior return minus a risk
-   penalty minus a turnover penalty (so the optimizer doesn't churn the book
-   for a marginal gain), subject to real-world constraints:
-     - fully invested (weights sum to 1)
-     - per-asset bounds (no more than X% in one line)
-     - per-sector caps (no more than Y% in one sector)
-     - a cash floor (liquidity buffer)
-     - a turnover budget (max % of book that can trade this cycle)
-
-This is intentionally a convex QP (not a black-box ML model) so every
-allocation decision is explainable: we can always report *why* the
-optimizer moved weight from A to B in terms of the inputs above.
-"""
 from __future__ import annotations
 
 import numpy as np
