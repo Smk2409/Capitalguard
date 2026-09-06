@@ -1,23 +1,4 @@
-"""
-main.py
--------
-FastAPI service tying the optimizer, risk engine, and data simulator
-together behind a small REST API that the dashboard (frontend/index.html)
-consumes.
 
-Run with:
-    uvicorn main:app --reload --port 8000
-
-Endpoints
-=========
-GET  /health                    liveness check
-GET  /market/prices             simulated price history for the asset universe
-GET  /portfolio                 current portfolio weights + risk snapshot
-POST /optimize                  run the optimizer, given optional views/constraints
-POST /risk-check                run risk checks against arbitrary weights
-POST /scenario                  apply a market shock and report the resulting risk state
-GET  /audit-log                 full history of decisions made this session (explainability)
-"""
 from __future__ import annotations
 
 import datetime as dt
