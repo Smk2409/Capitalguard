@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CapitalGuard AI — Decision Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0a0a0a; --panel:#131313; --panel2:#161f18; --border:#2a2a2a;
+    --green:#2daf4b; --green-dim:#143d1e; --red:#e05c5c; --amber:#e0b95c;
+    --text:#f2f2f2; --muted:#9a9a9a; --mono:'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:20px 32px; border-bottom:1px solid var(--border);
+  }
+  header h1{font-size:20px; margin:0; letter-spacing:.2px;}
+  header h1 span{color:var(--green);}
+  #conn-status{font-family:var(--mono); font-size:12px; color:var(--muted); display:flex; align-items:center; gap:8px;}
+  #conn-dot{width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block;}
+  #conn-dot.live{background:var(--green);}
+
+  main{padding:24px 32px; display:grid; grid-template-columns:1.3fr 1fr; gap:20px; max-width:1400px; margin:0 auto;}
+  @media(max-width:980px){ main{grid-template-columns:1fr;} }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px;
+    padding:20px; margin-bottom:20px;
+  }
+  .panel h2{font-size:14px; margin:0 0 16px 0; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.6px;}
+  .col{display:flex; flex-direction:column;}
+
+  .action-banner{
+    display:flex; align-items:center; gap:14px; padding:16px 20px; border-radius:10px;
+    border:1px solid var(--border); margin-bottom:20px;
+  }
+  .action-banner.PROCEED{background:var(--green-dim); border-color:var(--green);}
+  .action-banner.AUTO_HEDGE{background:#3d2f14; border-color:var(--amber);}
+  .action-banner.ESCALATE{background:#3d2f14; border-color:var(--amber);}
+  .action-banner.FREEZE{background:#3d1414; border-color:var(--red);}
+  .action-banner .badge{
+    font-family:var(--mono); font-weight:700; font-size:13px; padding:6px 12px; border-radius:6px;
+    background:rgba(255,255,255,.08);
+  }
+  .action-banner p{margin:0; font-size:14px; color:var(--text);}
+
+  canvas{max-width:100%;}
+
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th,td{text-align:left; padding:8px 6px; border-bottom:1px solid var(--border);}
+  th{color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.4px;}
+
+  .metric-row{display:flex; justify-content:space-between; margin-bottom:14px;}
+  .metric-row .label{font-size:13px; color:var(--muted);}
+  .metric-row .value{font-family:var(--mono); font-size:14px;}
+  .meter{height:8px; background:#2c2c2c; border-radius:5px; overflow:hidden; margin-top:6px;}
+  .meter-fill{height:100%; background:var(--green); border-radius:5px;}
+  .meter-fill.warn{background:var(--red);}
+
+  .breach-item{
+    font-size:13px; padding:8px 10px; border-left:3px solid var(--red); background:#1a1010;
+    margin-bottom:8px; border-radius:4px;
+  }
+  .ok-msg{font-size:13px; color:var(--green);}
+
+  form.controls{display:flex; flex-direction:column; gap:10px;}
+  form.controls label{font-size:12px; color:var(--muted);}
+  form.controls input, form.controls select{
+    background:#0e0e0e; border:1px solid var(--border); color:var(--text);
+    padding:8px 10px; border-radius:6px; font-size:13px; width:100%;
+  }
+  .row2{display:flex; gap:10px;}
+  .row2 > div{flex:1;}
+  button{
+    background:var(--green); color:#06170a; border:none; border-radius:6px;
+    padding:10px 16px; font-weight:700; font-size:13px; cursor:pointer;
+  }
+  button.secondary{background:transparent; border:1px solid var(--border); color:var(--text);}
+  button:hover{filter:brightness(1.08);}
+  button:active{filter:brightness(.95);}
+
+  #rationale-list{margin:0; padding-left:18px; font-size:13px; color:var(--muted);}
+  #rationale-list li{margin-bottom:4px;}
+
+  #audit-log{max-height:320px; overflow-y:auto; font-family:var(--mono); font-size:12px;}
+  .log-entry{padding:8px 0; border-bottom:1px solid var(--border);}
+  .log-entry .ts{color:var(--muted);}
+  .log-kind{color:var(--green); font-weight:700; margin-right:6px;}
+
+  footer{text-align:center; padding:18px; color:var(--muted); font-size:12px;}
+  code{background:#0e0e0e; padding:2px 6px; border-radius:4px; font-family:var(--mono);}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>CapitalGuard<span> AI</span> — Decision Dashboard</h1>
+  <div id="conn-status"><span id="conn-dot"></span><span id="conn-text">connecting to API…</span></div>
+</header>
+
+<main>
+  <div class="col">
+
+    <div id="action-banner" class="action-banner PROCEED">
+      <span class="badge" id="action-badge">PROCEED</span>
+      <p id="action-message">Waiting for first risk check…</p>
+    </div>
+
+    <div class="panel">
+      <h2>Portfolio Allocation</h2>
+      <canvas id="allocationChart" height="220"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>Sector Exposure vs Caps</h2>
+      <canvas id="sectorChart" height="180"></canvas>
+    </div>
+
+    <div class="panel">
+      <h2>Scenario Simulator — Cumulative Return</h2>
+      <canvas id="scenarioChart" height="200"></canvas>
+      <div class="row2" style="margin-top:14px;">
+        <div>
+          <label>Shock type</label>
+          <select id="shockType">
+            <option value="equity_selloff">Equity sell-off</option>
+            <option value="rate_spike">Rate spike</option>
+            <option value="liquidity_crunch">Liquidity crunch</option>
+            <option value="credit_event">Credit event</option>
+          </select>
+        </div>
+        <div>
+          <label>Magnitude</label>
+          <input type="range" id="shockMagnitude" min="0.02" max="0.20" step="0.01" value="0.10">
+        </div>
+      </div>
+      <button style="margin-top:12px;" onclick="runScenario()">Run Scenario</button>
+    </div>
+
+  </div>
+
+  <div class="col">
+
+    <div class="panel">
+      <h2>Risk Metrics (1-day, 95%)</h2>
+      <div class="metric-row"><span class="label">Value at Risk (VaR)</span><span class="value" id="var-value">—</span></div>
+      <div class="meter"><div class="meter-fill" id="var-meter" style="width:0%"></div></div>
+      <div class="metric-row" style="margin-top:14px;"><span class="label">Conditional VaR (CVaR)</span><span class="value" id="cvar-value">—</span></div>
+      <div class="meter"><div class="meter-fill" id="cvar-meter" style="width:0%"></div></div>
+      <div class="metric-row" style="margin-top:14px;"><span class="label">Trailing Drawdown</span><span class="value" id="dd-value">—</span></div>
+      <div class="meter"><div class="meter-fill" id="dd-meter" style="width:0%"></div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Active Breaches</h2>
+      <div id="breach-list"><p class="ok-msg">No breaches detected.</p></div>
+    </div>
+
+    <div class="panel">
+      <h2>Re-Optimize Allocation</h2>
+      <form class="controls" onsubmit="event.preventDefault(); runOptimize();">
+        <label>Asset view override (optional)</label>
+        <div class="row2">
+          <select id="viewAsset">
+            <option value="">— none —</option>
+            <option value="US_EQ">US Equities</option>
+            <option value="INTL_EQ">International Equities</option>
+            <option value="EM_EQ">Emerging Mkt Equities</option>
+            <option value="GOV_BD">Government Bonds</option>
+            <option value="CORP_BD">Corporate Bonds</option>
+            <option value="HY_BD">High-Yield Bonds</option>
+            <option value="REIT">Real Estate (REITs)</option>
+          </select>
+          <input type="number" id="viewReturn" placeholder="expected return e.g. 0.16" step="0.01">
+        </div>
+        <label>Max single-asset weight</label>
+        <input type="number" id="maxWeight" value="0.35" step="0.05">
+        <button type="submit">Run Optimizer</button>
+      </form>
+      <ul id="rationale-list" style="margin-top:14px;"></ul>
+    </div>
+
+    <div class="panel">
+      <h2>Audit &amp; Decision Log</h2>
+      <div id="audit-log"><p class="ok-msg" style="color:var(--muted)">No events yet this session.</p></div>
+    </div>
+
+  </div>
+</main>
+
+<footer>
+  Backend expected at <code id="api-base-label">http://localhost:8000</code> —
+  start it with <code>uvicorn main:app --reload --port 8000</code> from <code>/backend</code>.
+  Running without a backend shows demo data.
+</footer>
+
+<script>
+const API_BASE = "http://localhost:8000";
+document.getElementById("api-base-label").textContent = API_BASE;
+
+const ASSET_COLORS = {
+  US_EQ:"#2daf4b", INTL_EQ:"#4fd67a", EM_EQ:"#8be6a6", GOV_BD:"#5c8ee0",
+  CORP_BD:"#8fb4ea", HY_BD:"#e0b95c", REIT:"#c07be0", CASH:"#9a9a9a"
+};
+const SECTOR_CAPS = {Equity:0.55, FixedIncome:0.55, RealAsset:0.25};
+
+let allocationChart, sectorChart, scenarioChart;
+let apiLive = false;
+
+// ---------- demo fallback data (used if API isn't reachable) ----------
+const DEMO_WEIGHTS = {US_EQ:.125, INTL_EQ:.125, EM_EQ:.125, GOV_BD:.125, CORP_BD:.125, HY_BD:.125, REIT:.125, CASH:.125};
+const DEMO_RISK = {
+  metrics:{var_95:0.0091, cvar_95:0.0124, max_drawdown:-0.0615, sector_exposure:{Equity:.375,FixedIncome:.375,RealAsset:.125,Cash:.125}},
+  breaches: [], status:"OK"
+};
+const DEMO_ACTION = {action:"PROCEED", message:"Demo mode: all risk checks passed on the sample book.", triggered_by:[]};
+
+async function apiCall(path, opts) {
+  try {
+    const res = await fetch(API_BASE + path, opts);
+    if (!res.ok) throw new Error("bad status " + res.status);
+    apiLive = true;
+    return await res.json();
+  } catch (e) {
+    apiLive = false;
+    return null;
+  }
+}
+
+function setConnStatus() {
+  const dot = document.getElementById("conn-dot");
+  const txt = document.getElementById("conn-text");
+  if (apiLive) { dot.classList.add("live"); txt.textContent = "connected to backend"; }
+  else { dot.classList.remove("live"); txt.textContent = "backend offline — showing demo data"; }
+}
+
+function renderActionBanner(action) {
+  const banner = document.getElementById("action-banner");
+  banner.className = "action-banner " + action.action;
+  document.getElementById("action-badge").textContent = action.action;
+  document.getElementById("action-message").textContent = action.message +
+    (action.triggered_by && action.triggered_by.length ? "  (" + action.triggered_by[0] + ")" : "");
+}
+
+function renderRiskMetrics(risk) {
+  const m = risk.metrics;
+  document.getElementById("var-value").textContent = (m.var_95*100).toFixed(2) + "%";
+  document.getElementById("cvar-value").textContent = (m.cvar_95*100).toFixed(2) + "%";
+  document.getElementById("dd-value").textContent = (m.max_drawdown*100).toFixed(2) + "%";
+
+  setMeter("var-meter", m.var_95, 0.025);
+  setMeter("cvar-meter", m.cvar_95, 0.04);
+  setMeter("dd-meter", Math.abs(m.max_drawdown), 0.15);
+
+  const list = document.getElementById("breach-list");
+  if (!risk.breaches || risk.breaches.length === 0) {
+    list.innerHTML = '<p class="ok-msg">No breaches detected — book is within all configured limits.</p>';
+  } else {
+    list.innerHTML = risk.breaches.map(b =>
+      `<div class="breach-item"><strong>${b.type.replace(/_/g," ")}</strong> · ${b.severity}<br>${b.detail}</div>`
+    ).join("");
+  }
+
+  renderSectorChart(m.sector_exposure);
+}
+
+function setMeter(id, value, limit) {
+  const pct = Math.min(100, (value/limit)*100);
+  const el = document.getElementById(id);
+  el.style.width = pct + "%";
+  el.classList.toggle("warn", value > limit);
+}
+
+function renderAllocationChart(weights) {
+  const labels = Object.keys(weights);
+  const data = labels.map(k => weights[k]);
+  const colors = labels.map(k => ASSET_COLORS[k] || "#888");
+
+  if (allocationChart) { allocationChart.data.datasets[0].data = data; allocationChart.update(); return; }
+  allocationChart = new Chart(document.getElementById("allocationChart"), {
+    type: "doughnut",
+    data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+    options: {
+      plugins: { legend: { position: "right", labels: { color: "#f2f2f2", boxWidth: 12, font:{size:11} } } },
+      cutout: "62%"
+    }
+  });
+}
+
+function renderSectorChart(sectorExposure) {
+  const sectors = Object.keys(SECTOR_CAPS);
+  const exposure = sectors.map(s => (sectorExposure[s] || 0) * 100);
+  const caps = sectors.map(s => SECTOR_CAPS[s] * 100);
+
+  if (sectorChart) {
+    sectorChart.data.datasets[0].data = exposure;
+    sectorChart.data.datasets[1].data = caps;
+    sectorChart.update();
+    return;
+  }
+  sectorChart = new Chart(document.getElementById("sectorChart"), {
+    type: "bar",
+    data: {
+      labels: sectors,
+      datasets: [
+        { label: "Exposure %", data: exposure, backgroundColor: "#2daf4b" },
+        { label: "Cap %", data: caps, backgroundColor: "rgba(224,92,92,0.35)" }
+      ]
+    },
+    options: {
+      scales: {
+        x: { ticks: { color: "#9a9a9a" }, grid: { color: "#2a2a2a" } },
+        y: { ticks: { color: "#9a9a9a" }, grid: { color: "#2a2a2a" } }
+      },
+      plugins: { legend: { labels: { color: "#f2f2f2" } } }
+    }
+  });
+}
+
+function renderScenarioChart(dates, series) {
+  const datasets = Object.keys(series).map(k => ({
+    label: k, data: series[k], borderColor: ASSET_COLORS[k] || "#888",
+    backgroundColor: "transparent", tension: 0.25, pointRadius: 0, borderWidth: 1.5
+  }));
+  if (scenarioChart) { scenarioChart.data.labels = dates; scenarioChart.data.datasets = datasets; scenarioChart.update(); return; }
+  scenarioChart = new Chart(document.getElementById("scenarioChart"), {
+    type: "line",
+    data: { labels: dates, datasets },
+    options: {
+      interaction:{mode:"nearest", intersect:false},
+      scales: {
+        x: { ticks: { color: "#9a9a9a", maxTicksLimit: 8 }, grid: { display: false } },
+        y: { ticks: { color: "#9a9a9a" }, grid: { color: "#2a2a2a" } }
+      },
+      plugins: { legend: { labels: { color: "#f2f2f2", boxWidth: 10, font:{size:10} } } }
+    }
+  });
+}
+
+function renderAuditLog(events) {
+  const el = document.getElementById("audit-log");
+  if (!events || events.length === 0) {
+    el.innerHTML = '<p class="ok-msg" style="color:var(--muted)">No events yet this session.</p>';
+    return;
+  }
+  el.innerHTML = events.map(e => `
+    <div class="log-entry">
+      <span class="ts">${e.timestamp.slice(11,19)}</span>
+      <span class="log-kind">${e.kind}</span>
+      ${e.risk_action ? e.risk_action.action + " — " + e.risk_action.message : ""}
+    </div>`).join("");
+}
+
+async function loadPortfolio() {
+  const data = await apiCall("/portfolio");
+  setConnStatus();
+  if (data) {
+    renderAllocationChart(data.weights);
+    renderRiskMetrics(data.risk);
+    renderActionBanner(data.action);
+  } else {
+    renderAllocationChart(DEMO_WEIGHTS);
+    renderRiskMetrics(DEMO_RISK);
+    renderActionBanner(DEMO_ACTION);
+  }
+}
+
+async function loadMarket() {
+  const data = await apiCall("/market/prices?days=90");
+  if (data) {
+    renderScenarioChart(data.dates, data.series);
+  } else {
+    // synthetic fallback series
+    const dates = Array.from({length:30}, (_,i) => "Day "+(i+1));
+    const series = {US_EQ: dates.map((_,i)=>1+Math.sin(i/4)*0.05+i*0.001)};
+    renderScenarioChart(dates, series);
+  }
+}
+
+async function loadAuditLog() {
+  const data = await apiCall("/audit-log");
+  if (data) renderAuditLog(data.events);
+}
+
+async function runOptimize() {
+  const asset = document.getElementById("viewAsset").value;
+  const ret = parseFloat(document.getElementById("viewReturn").value);
+  const maxWeight = parseFloat(document.getElementById("maxWeight").value) || 0.35;
+  const views = (asset && !isNaN(ret)) ? { [asset]: ret } : null;
+
+  const body = { views, max_weight: maxWeight, sector_caps: SECTOR_CAPS, apply: true };
+  const data = await apiCall("/optimize", {
+    method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
+  });
+  setConnStatus();
+  if (data) {
+    renderAllocationChart(data.optimization.weights);
+    renderRiskMetrics(data.risk_check);
+    renderActionBanner(data.action);
+    document.getElementById("rationale-list").innerHTML =
+      data.optimization.rationale.map(r => `<li>${r}</li>`).join("");
+    loadAuditLog();
+  } else {
+    document.getElementById("rationale-list").innerHTML =
+      "<li>Backend offline — start the FastAPI server to run live optimization.</li>";
+  }
+}
+
+async function runScenario() {
+  const shock_type = document.getElementById("shockType").value;
+  const magnitude = parseFloat(document.getElementById("shockMagnitude").value);
+  const data = await apiCall("/scenario", {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ shock_type, magnitude })
+  });
+  setConnStatus();
+  if (data) {
+    renderRiskMetrics(data.risk_check);
+    renderActionBanner(data.action);
+    loadAuditLog();
+  }
+}
+
+// ---- init ----
+loadPortfolio();
+loadMarket();
+loadAuditLog();
+setInterval(loadAuditLog, 8000);
+</script>
+
+</body>
+</html>
